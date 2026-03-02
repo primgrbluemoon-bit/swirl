@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Immersive Circular Engine</title>
+
+<style>
+
+/* =========================================================
+   GLOBAL RESET
+========================================================= */
+
+*,
+*::before,
+*::after{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+html, body{
+    height:100%;
+    width:100%;
+    background:#000;
+    font-family:system-ui;
+    overflow:hidden;
+}
+
+/* =========================================================
+   SETUP UI
+========================================================= */
+
+#setup{
+    position:fixed;
+    inset:0;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    flex-direction:column;
+    gap:20px;
+    background:#020617;
+    color:white;
+    z-index:100;
+}
+
+#uploadLabel{
+    padding:14px 36px;
+    background:#334155;
+    border-radius:40px;
+    cursor:pointer;
+    font-weight:600;
+}
+
+#playBtn{
+    padding:14px 36px;
+    background:#22d3ee;
+    border-radius:40px;
+    font-weight:700;
+    border:none;
+    cursor:pointer;
+    display:none;
+}
+
+input[type="file"]{
+    display:none;
+}
+
+/* =========================================================
+   STAGE
+========================================================= */
+
+#stage{
+    position:fixed;
+    inset:0;
+    display:none;
+    justify-content:center;
+    align-items:center;
+    background:#000;
+}
+
+/* Circular viewport */
+
+#circle{
+    position:relative;
+    width:80vmin;
+    height:80vmin;
+    border-radius:50%;
+    overflow:hidden;
+}
+
+/* Image */
+
+#renderImage{
+    position:absolute;
+    top:50%;
+    left:50%;
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    transform-origin:center center;
+    will-change:transform;
+}
+
+</style>
+</head>
+<body>
+
+<!-- =========================================================
+     UI
+========================================================= -->
+
+<div id="setup">
+    <label id="uploadLabel">
+        Select Image
+        <input type="file" id="fileInput" accept="image/*">
+    </label>
+
+    <button id="playBtn">Play</button>
+</div>
+
+<div id="stage">
+    <div id="circle">
+        <img id="renderImage"/>
+    </div>
+</div>
+
+<script>
+
+/* =========================================================
+   CONFIG MANAGER
+========================================================= */
+
+const Config = (function(){
+
+    const settings = {
+
+        rotationSpeed: 60,
+        targetFPS: 60,
+        minFPS: 30,
+        adaptiveScaling: true,
+        pointerLock: false
+
+    };
+
+    return {
+        get(key){ return settings[key]; },
+        set(key,value){ settings[key] = value; },
+        all(){ return settings; }
+    };
+
+})();
+
+/* =========================================================
+   STATE MACHINE
+========================================================= */
+
+const State = (function(){
+
+    const STATES = {
+        INIT: "INIT",
+        READY: "READY",
+        RUNNING: "RUNNING",
+        EXITING: "EXITING"
+    };
+
+    let current = STATES.INIT;
+
+    return {
+        set(state){ current = state; },
+        get(){ return current; },
+        is(state){ return current === state; },
+        STATES
+    };
+
+})();
+
+/* =========================================================
+   PERFORMANCE MONITOR
+========================================================= */
+
+const PerformanceMonitor = (function(){
+
+    let lastTime = performance.now();
+    let fps = 0;
+    let frameCount = 0;
+    let accumulator = 0;
+
+    function update(now){
+        const delta = now - lastTime;
+        lastTime = now;
+
+        accumulator += delta;
+        frameCount++;
+
+        if(accumulator >= 1000){
+            fps = frameCount;
+            frameCount = 0;
+            accumulator = 0;
+        }
+
+        return delta;
+    }
+
+    function getFPS(){ return fps; }
+
+    return {
+        update,
+        getFPS
+    };
+
+})();
+
+/* =========================================================
+   FULLSCREEN CONTROLLER
+========================================================= */
+
+const Fullscreen = (function(){
+
+    function enter(){
+        if(document.documentElement.requestFullscreen){
+            document.documentElement.requestFullscreen();
+        }
+    }
+
+    function exit(){
+        if(document.fullscreenElement){
+            document.exitFullscreen();
+        }
+    }
+
+    document.addEventListener("fullscreenchange",()=>{
+        if(!document.fullscreenElement && State.is(State.STATES.RUNNING)){
+            Engine.stop();
+        }
+    });
+
+    return { enter, exit };
+
+})();
+
+/* =========================================================
+   INPUT CONTROLLER
+========================================================= */
+
+const Input = (function(){
+
+    function init(){
+
+        document.addEventListener("keydown", e => {
+
+            const key = e.key.toLowerCase();
+
+            // Stop engine
+            if(key === "escape" || key === "q"){
+                Engine.stop();
+            }
+
+            // Increase speed
+            if(key === "arrowup"){
+                const current = Config.get("rotationSpeed");
+                Config.set("rotationSpeed", current + 20);
+            }
+
+            // Decrease speed
+            if(key === "arrowdown"){
+                const current = Config.get("rotationSpeed");
+                Config.set("rotationSpeed", Math.max(0, current - 20));
+            }
+
+        });
+
+        document.addEventListener("contextmenu", e => e.preventDefault());
+
+        document.addEventListener("touchmove", e => {
+            if(State.is(State.STATES.RUNNING)){
+                e.preventDefault();
+            }
+        }, { passive:false });
+
+    }
+
+    return { init };
+
+})();
+
+/* =========================================================
+   ASSET LOADER
+========================================================= */
+
+const Loader = (function(){
+
+    function loadImage(file){
+        return new Promise((resolve,reject)=>{
+            const reader = new FileReader();
+            reader.onload = e=>{
+                resolve(e.target.result);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    }
+
+    return { loadImage };
+
+})();
+
+/* =========================================================
+   RENDER ENGINE
+========================================================= */
+
+const Engine = (function(){
+
+    let imageEl = document.getElementById("renderImage");
+    let stage = document.getElementById("stage");
+    let setup = document.getElementById("setup");
+
+    let angle = 0;
+    let animationId = null;
+    let lastFrame = performance.now();
+
+    function start(){
+
+        State.set(State.STATES.RUNNING);
+        stage.style.display = "flex";
+        setup.style.display = "none";
+
+        Fullscreen.enter();
+        loop();
+    }
+
+    function stop(){
+
+        State.set(State.STATES.EXITING);
+        cancelAnimationFrame(animationId);
+
+        angle = 0;
+        imageEl.style.transform =
+            "translate(-50%, -50%) rotate(0deg)";
+
+        stage.style.display = "none";
+        setup.style.display = "flex";
+
+        Fullscreen.exit();
+        State.set(State.STATES.READY);
+    }
+
+    function loop(now = performance.now()){
+
+        if(!State.is(State.STATES.RUNNING)) return;
+
+        const delta = PerformanceMonitor.update(now);
+        const speed = Config.get("rotationSpeed");
+
+        angle += (speed * delta) / 1000;
+
+        imageEl.style.transform =
+            `translate(-50%, -50%) rotate(${angle}deg)`;
+
+        animationId = requestAnimationFrame(loop);
+    }
+
+    return { start, stop };
+
+})();
+
+/* =========================================================
+   UI LOGIC
+========================================================= */
+
+(function(){
+
+    const fileInput = document.getElementById("fileInput");
+    const playBtn = document.getElementById("playBtn");
+    const renderImage = document.getElementById("renderImage");
+
+    Input.init();
+
+    fileInput.addEventListener("change", async e=>{
+        const file = e.target.files[0];
+        if(!file) return;
+
+        const data = await Loader.loadImage(file);
+        renderImage.src = data;
+
+        State.set(State.STATES.READY);
+        playBtn.style.display = "inline-block";
+    });
+
+    playBtn.addEventListener("click",()=>{
+        if(State.is(State.STATES.READY)){
+            Engine.start();
+        }
+      
+    });
+
+})(); 
+
+</script>
+</body>
+</html>
