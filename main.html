@@ -6,11 +6,6 @@
 <title>Immersive Circular Engine</title>
 
 <style>
-
-/* =========================================================
-   GLOBAL RESET
-========================================================= */
-
 *,
 *::before,
 *::after{
@@ -27,10 +22,6 @@ html, body{
     overflow:hidden;
 }
 
-/* =========================================================
-   SETUP UI
-========================================================= */
-
 #setup{
     position:fixed;
     inset:0;
@@ -38,7 +29,7 @@ html, body{
     justify-content:center;
     align-items:center;
     flex-direction:column;
-    gap:20px;
+    gap:18px;
     background:#020617;
     color:white;
     z-index:100;
@@ -52,6 +43,31 @@ html, body{
     font-weight:600;
 }
 
+#previewBox{
+    width:120px;
+    height:120px;
+    border:2px solid #334155;
+    border-radius:12px;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    overflow:hidden;
+    background:#0f172a;
+}
+
+#previewBox img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+}
+
+#textInput{
+    padding:10px 14px;
+    border-radius:8px;
+    border:none;
+    width:220px;
+}
+
 #playBtn{
     padding:14px 36px;
     background:#22d3ee;
@@ -62,24 +78,26 @@ html, body{
     display:none;
 }
 
+#colorWrapper{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-weight:600;
+}
+
 input[type="file"]{
     display:none;
 }
-
-/* =========================================================
-   STAGE
-========================================================= */
 
 #stage{
     position:fixed;
     inset:0;
     display:none;
+    flex-direction:column;
     justify-content:center;
     align-items:center;
     background:#000;
 }
-
-/* Circular viewport */
 
 #circle{
     position:relative;
@@ -88,8 +106,6 @@ input[type="file"]{
     border-radius:50%;
     overflow:hidden;
 }
-
-/* Image */
 
 #renderImage{
     position:absolute;
@@ -102,246 +118,133 @@ input[type="file"]{
     will-change:transform;
 }
 
+#displayText{
+    margin-top:20px;
+    font-size:1.5rem;
+    font-weight:600;
+    text-align:center;
+    max-width:80%;
+    word-wrap:break-word;
+}
 </style>
 </head>
 <body>
 
-<!-- =========================================================
-     UI
-========================================================= -->
-
 <div id="setup">
+
     <label id="uploadLabel">
         Select Image
         <input type="file" id="fileInput" accept="image/*">
     </label>
 
+    <div id="previewBox">
+        <img id="previewImage" />
+    </div>
+
+    <div id="colorWrapper">
+        Background Color
+        <input type="color" id="bgColorPicker" value="#000000">
+    </div>
+
+    <input type="text" id="textInput" placeholder="Optional text below image">
+
     <button id="playBtn">Play</button>
+
 </div>
 
 <div id="stage">
     <div id="circle">
         <img id="renderImage"/>
     </div>
+    <div id="displayText"></div>
 </div>
 
 <script>
 
-/* =========================================================
-   CONFIG MANAGER
-========================================================= */
+/* CONFIG */
 
 const Config = (function(){
-
     const settings = {
-
         rotationSpeed: 60,
-        targetFPS: 60,
-        minFPS: 30,
-        adaptiveScaling: true,
-        pointerLock: false
-
+        backgroundColor: "#000000",
+        displayText: ""
     };
-
     return {
         get(key){ return settings[key]; },
-        set(key,value){ settings[key] = value; },
-        all(){ return settings; }
+        set(key,value){ settings[key] = value; }
     };
-
 })();
 
-/* =========================================================
-   STATE MACHINE
-========================================================= */
+/* STATE */
 
 const State = (function(){
-
     const STATES = {
         INIT: "INIT",
         READY: "READY",
-        RUNNING: "RUNNING",
-        EXITING: "EXITING"
+        RUNNING: "RUNNING"
     };
-
     let current = STATES.INIT;
-
     return {
         set(state){ current = state; },
-        get(){ return current; },
         is(state){ return current === state; },
         STATES
     };
-
 })();
 
-/* =========================================================
-   PERFORMANCE MONITOR
-========================================================= */
+/* CONTRAST FUNCTION */
 
-const PerformanceMonitor = (function(){
+function getContrastColor(hex){
 
-    let lastTime = performance.now();
-    let fps = 0;
-    let frameCount = 0;
-    let accumulator = 0;
+    const r = parseInt(hex.substr(1,2),16);
+    const g = parseInt(hex.substr(3,2),16);
+    const b = parseInt(hex.substr(5,2),16);
 
-    function update(now){
-        const delta = now - lastTime;
-        lastTime = now;
+    const luminance =
+        (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 
-        accumulator += delta;
-        frameCount++;
+    return luminance > 0.6 ? "#000000" : "#ffffff";
+}
 
-        if(accumulator >= 1000){
-            fps = frameCount;
-            frameCount = 0;
-            accumulator = 0;
-        }
-
-        return delta;
-    }
-
-    function getFPS(){ return fps; }
-
-    return {
-        update,
-        getFPS
-    };
-
-})();
-
-/* =========================================================
-   FULLSCREEN CONTROLLER
-========================================================= */
-
-const Fullscreen = (function(){
-
-    function enter(){
-        if(document.documentElement.requestFullscreen){
-            document.documentElement.requestFullscreen();
-        }
-    }
-
-    function exit(){
-        if(document.fullscreenElement){
-            document.exitFullscreen();
-        }
-    }
-
-    document.addEventListener("fullscreenchange",()=>{
-        if(!document.fullscreenElement && State.is(State.STATES.RUNNING)){
-            Engine.stop();
-        }
-    });
-
-    return { enter, exit };
-
-})();
-
-/* =========================================================
-   INPUT CONTROLLER
-========================================================= */
-
-const Input = (function(){
-
-    function init(){
-
-        document.addEventListener("keydown", e => {
-
-            const key = e.key.toLowerCase();
-
-            // Stop engine
-            if(key === "escape" || key === "q"){
-                Engine.stop();
-            }
-
-            // Increase speed
-            if(key === "arrowup"){
-                const current = Config.get("rotationSpeed");
-                Config.set("rotationSpeed", current + 20);
-            }
-
-            // Decrease speed
-            if(key === "arrowdown"){
-                const current = Config.get("rotationSpeed");
-                Config.set("rotationSpeed", Math.max(0, current - 20));
-            }
-
-        });
-
-        document.addEventListener("contextmenu", e => e.preventDefault());
-
-        document.addEventListener("touchmove", e => {
-            if(State.is(State.STATES.RUNNING)){
-                e.preventDefault();
-            }
-        }, { passive:false });
-
-    }
-
-    return { init };
-
-})();
-
-/* =========================================================
-   ASSET LOADER
-========================================================= */
-
-const Loader = (function(){
-
-    function loadImage(file){
-        return new Promise((resolve,reject)=>{
-            const reader = new FileReader();
-            reader.onload = e=>{
-                resolve(e.target.result);
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-        });
-    }
-
-    return { loadImage };
-
-})();
-
-/* =========================================================
-   RENDER ENGINE
-========================================================= */
+/* ENGINE */
 
 const Engine = (function(){
 
-    let imageEl = document.getElementById("renderImage");
-    let stage = document.getElementById("stage");
-    let setup = document.getElementById("setup");
+    const imageEl = document.getElementById("renderImage");
+    const stage = document.getElementById("stage");
+    const setup = document.getElementById("setup");
+    const displayText = document.getElementById("displayText");
 
     let angle = 0;
     let animationId = null;
-    let lastFrame = performance.now();
+    let lastTime = performance.now();
 
     function start(){
 
         State.set(State.STATES.RUNNING);
+
+        const bg = Config.get("backgroundColor");
+
+        stage.style.background = bg;
+        displayText.textContent = Config.get("displayText");
+        displayText.style.color = getContrastColor(bg);
+
         stage.style.display = "flex";
         setup.style.display = "none";
 
-        Fullscreen.enter();
         loop();
     }
 
     function stop(){
 
-        State.set(State.STATES.EXITING);
         cancelAnimationFrame(animationId);
-
         angle = 0;
+
         imageEl.style.transform =
             "translate(-50%, -50%) rotate(0deg)";
 
         stage.style.display = "none";
         setup.style.display = "flex";
 
-        Fullscreen.exit();
         State.set(State.STATES.READY);
     }
 
@@ -349,9 +252,10 @@ const Engine = (function(){
 
         if(!State.is(State.STATES.RUNNING)) return;
 
-        const delta = PerformanceMonitor.update(now);
-        const speed = Config.get("rotationSpeed");
+        const delta = now - lastTime;
+        lastTime = now;
 
+        const speed = Config.get("rotationSpeed");
         angle += (speed * delta) / 1000;
 
         imageEl.style.transform =
@@ -364,38 +268,69 @@ const Engine = (function(){
 
 })();
 
-/* =========================================================
-   UI LOGIC
-========================================================= */
+/* INPUT CONTROLS */
+
+document.addEventListener("keydown", e => {
+
+    const key = e.key.toLowerCase();
+
+    if(key === "escape" || key === "q"){
+        Engine.stop();
+    }
+
+    if(key === "arrowup"){
+        const current = Config.get("rotationSpeed");
+        Config.set("rotationSpeed", current + 20);
+    }
+
+    if(key === "arrowdown"){
+        const current = Config.get("rotationSpeed");
+        Config.set("rotationSpeed", Math.max(0, current - 20));
+    }
+
+});
+
+/* UI */
 
 (function(){
 
     const fileInput = document.getElementById("fileInput");
     const playBtn = document.getElementById("playBtn");
     const renderImage = document.getElementById("renderImage");
+    const previewImage = document.getElementById("previewImage");
+    const bgColorPicker = document.getElementById("bgColorPicker");
+    const textInput = document.getElementById("textInput");
 
-    Input.init();
+    bgColorPicker.addEventListener("input", e=>{
+        Config.set("backgroundColor", e.target.value);
+    });
 
-    fileInput.addEventListener("change", async e=>{
+    textInput.addEventListener("input", e=>{
+        Config.set("displayText", e.target.value);
+    });
+
+    fileInput.addEventListener("change", e=>{
         const file = e.target.files[0];
         if(!file) return;
 
-        const data = await Loader.loadImage(file);
-        renderImage.src = data;
+        const reader = new FileReader();
+        reader.onload = event=>{
+            renderImage.src = event.target.result;
+            previewImage.src = event.target.result;
 
-        State.set(State.STATES.READY);
-        playBtn.style.display = "inline-block";
+            State.set(State.STATES.READY);
+            playBtn.style.display = "inline-block";
+        };
+        reader.readAsDataURL(file);
     });
 
-    playBtn.addEventListener("click",()=>{
+    playBtn.addEventListener("click", ()=>{
         if(State.is(State.STATES.READY)){
             Engine.start();
         }
-      
     });
 
-})(); 
-
+})();
 </script>
 </body>
 </html>
