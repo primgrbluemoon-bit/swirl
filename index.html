@@ -22,6 +22,7 @@ html, body{
     overflow:hidden;
 }
 
+/* --- original setup styles kept --- */
 #setup{
     position:fixed;
     inset:0;
@@ -126,6 +127,73 @@ input[type="file"]{
     max-width:80%;
     word-wrap:break-word;
 }
+
+/* ----------------- New / modified layout for setup to avoid blocking controls ----------------- */
+
+/* new container to put the preview and color picker side-by-side */
+#previewRow{
+    display:flex;
+    align-items:center;
+    gap:12px;
+}
+
+/* move color picker to a smaller pill next to preview */
+#colorWrapper {
+    padding:8px;
+    border-radius:10px;
+    background: rgba(255,255,255,0.03);
+}
+
+/* Inputs for center overlay text */
+#centerControls{
+    display:flex;
+    gap:8px;
+    align-items:center;
+}
+
+/* center overlay placed above image but NOT rotated */
+#centerOverlay{
+    position:absolute;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    pointer-events:none; /* allow touches to pass to image for gestures */
+    text-align:center;
+    white-space:pre-wrap;
+    word-break:break-word;
+    max-width:90%;
+    font-weight:700;
+    /* default styling; updated dynamically in JS */
+}
+
+/* for touch hint on mobile */
+.touchHint{
+    font-size:0.85rem;
+    opacity:0.7;
+}
+
+/* responsive tweaks */
+@media (max-width:640px){
+    #setup{ padding:18px; gap:12px; }
+    #previewRow{ gap:8px; }
+    #textInput{ width:160px; }
+}
+
+/* keep the original look but ensure play button is tappable */
+#playBtn{ touch-action: manipulation; }
+
+/* make circle tap-responsive */
+#circle{ touch-action: none; -webkit-tap-highlight-color: transparent; }
+
+/* small visual hint when stage active so center overlay is readable (can be overwritten by bg color) */
+#stage.dim::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    background:transparent;
+    pointer-events:none;
+}
+
 </style>
 </head>
 <body>
@@ -137,24 +205,38 @@ input[type="file"]{
         <input type="file" id="fileInput" accept="image/*">
     </label>
 
-    <div id="previewBox">
-        <img id="previewImage" />
-    </div>
+    <!-- NEW: previewRow to put preview and color picker side-by-side -->
+    <div id="previewRow">
+        <div id="previewBox">
+            <img id="previewImage" />
+        </div>
 
-    <div id="colorWrapper">
-        Background Color
-        <input type="color" id="bgColorPicker" value="#000000">
+        <div id="colorWrapper">
+            Background
+            <input type="color" id="bgColorPicker" value="#000000" aria-label="Background color picker">
+        </div>
     </div>
 
     <input type="text" id="textInput" placeholder="Optional text below image">
 
+    <!-- NEW: center overlay controls (any language) -->
+    <div id="centerControls">
+        <input type="text" id="centerTextInput" placeholder="Center overlay (any language)" style="padding:8px;border-radius:8px;border:none;width:240px;">
+        <input type="color" id="centerTextColor" value="#ffffff" title="Center text color" style="width:40px;height:40px;padding:0;border-radius:6px;border:1px solid #334155;">
+        <input type="number" id="centerTextSize" value="28" min="10" max="200" step="1" title="Font size (px)" style="width:70px;padding:8px;border-radius:8px;border:none;">
+    </div>
+
     <button id="playBtn">Play</button>
+
+    <div class="touchHint">Mobile gestures: tap circle to start/stop, swipe up/down to change speed. Two-finger pinch changes speed faster.</div>
 
 </div>
 
 <div id="stage">
     <div id="circle">
         <img id="renderImage"/>
+        <!-- NEW: fixed center overlay that does NOT rotate with image -->
+        <div id="centerOverlay" aria-hidden="true"></div>
     </div>
     <div id="displayText"></div>
 </div>
@@ -167,7 +249,10 @@ const Config = (function(){
     const settings = {
         rotationSpeed: 60,
         backgroundColor: "#000000",
-        displayText: ""
+        displayText: "",
+        centerText: "",
+        centerTextColor: "#ffffff",
+        centerTextSize: 28
     };
     return {
         get(key){ return settings[key]; },
@@ -213,12 +298,25 @@ const Engine = (function(){
     const stage = document.getElementById("stage");
     const setup = document.getElementById("setup");
     const displayText = document.getElementById("displayText");
+    const centerOverlay = document.getElementById("centerOverlay");
 
     let angle = 0;
     let animationId = null;
     let lastTime = performance.now();
 
+    function applyCenterOverlayStyles(){
+        centerOverlay.textContent = Config.get("centerText");
+        centerOverlay.style.color = Config.get("centerTextColor");
+        centerOverlay.style.fontSize = Config.get("centerTextSize") + "px";
+        // Use a fallback font-family that supports many languages; user can override via CSS if needed
+        centerOverlay.style.fontFamily = "system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', 'Noto Color Emoji', sans-serif";
+        centerOverlay.style.textShadow = "0 1px 2px rgba(0,0,0,0.6)";
+    }
+
     function start(){
+
+        // if nothing loaded, ignore
+        if(!imageEl.src) return;
 
         State.set(State.STATES.RUNNING);
 
@@ -228,9 +326,15 @@ const Engine = (function(){
         displayText.textContent = Config.get("displayText");
         displayText.style.color = getContrastColor(bg);
 
+        applyCenterOverlayStyles();
+
         stage.style.display = "flex";
         setup.style.display = "none";
 
+        // ensure center overlay visible above frame
+        centerOverlay.style.display = Config.get("centerText") ? "block" : "none";
+
+        lastTime = performance.now();
         loop();
     }
 
@@ -301,12 +405,34 @@ document.addEventListener("keydown", e => {
     const bgColorPicker = document.getElementById("bgColorPicker");
     const textInput = document.getElementById("textInput");
 
+    // center overlay controls
+    const centerTextInput = document.getElementById("centerTextInput");
+    const centerTextColor = document.getElementById("centerTextColor");
+    const centerTextSize = document.getElementById("centerTextSize");
+    const centerOverlay = document.getElementById("centerOverlay");
+
     bgColorPicker.addEventListener("input", e=>{
         Config.set("backgroundColor", e.target.value);
     });
 
     textInput.addEventListener("input", e=>{
         Config.set("displayText", e.target.value);
+    });
+
+    centerTextInput.addEventListener("input", e=>{
+        Config.set("centerText", e.target.value);
+        centerOverlay.textContent = e.target.value;
+    });
+
+    centerTextColor.addEventListener("input", e=>{
+        Config.set("centerTextColor", e.target.value);
+        centerOverlay.style.color = e.target.value;
+    });
+
+    centerTextSize.addEventListener("input", e=>{
+        const v = parseInt(e.target.value,10) || 28;
+        Config.set("centerTextSize", v);
+        centerOverlay.style.fontSize = v + "px";
     });
 
     fileInput.addEventListener("change", e=>{
@@ -330,7 +456,116 @@ document.addEventListener("keydown", e => {
         }
     });
 
+    /* Ensure preview image clickable for mobile color picking: do not overlay controls on top of preview */
+    previewImage.style.userSelect = "none";
+    previewImage.style.touchAction = "manipulation";
+
 })();
+
+/* --- TOUCH & GESTURE HANDLING for mobile on #circle --- */
+/* Replaced broken cumulative-change logic with a stable, start-anchored implementation. */
+(function(){
+    const circle = document.getElementById("circle");
+
+    let startY = 0;
+    let startSpeed = 0;
+    let startTime = 0;
+    let isPinching = false;
+    let pinchStartDistance = 0;
+    let pinchStartSpeed = 0;
+
+    function getDistance(t1, t2){
+        const dx = t2.clientX - t1.clientX;
+        const dy = t2.clientY - t1.clientY;
+        return Math.hypot(dx,dy);
+    }
+
+    circle.addEventListener("touchstart", e => {
+
+        if(e.touches.length === 1){
+            const t = e.touches[0];
+            startY = t.clientY;
+            startSpeed = Config.get("rotationSpeed");
+            startTime = Date.now();
+            isPinching = false;
+        }
+
+        if(e.touches.length === 2){
+            isPinching = true;
+            pinchStartDistance = getDistance(e.touches[0], e.touches[1]);
+            pinchStartSpeed = Config.get("rotationSpeed");
+        }
+
+    }, {passive:true});
+
+    circle.addEventListener("touchmove", e => {
+
+        if(isPinching && e.touches.length === 2){
+
+            const newDistance = getDistance(e.touches[0], e.touches[1]);
+            if(pinchStartDistance > 0){
+                const scale = newDistance / pinchStartDistance;
+                const newSpeed = Math.max(0, Math.round(pinchStartSpeed * scale));
+                Config.set("rotationSpeed", newSpeed);
+            }
+
+            e.preventDefault();
+            return;
+        }
+
+        if(e.touches.length === 1){
+
+            const t = e.touches[0];
+            const deltaY = startY - t.clientY;
+
+            const sensitivity = 0.5; // increase to make swipes change speed more aggressively
+            const newSpeed = Math.max(0, Math.round(startSpeed + (deltaY * sensitivity)));
+
+            Config.set("rotationSpeed", newSpeed);
+        }
+
+    }, {passive:false});
+
+    circle.addEventListener("touchend", e => {
+
+        if(isPinching){
+            isPinching = false;
+            return;
+        }
+
+        const duration = Date.now() - startTime;
+
+        // treat short taps as toggle
+        if(duration < 250){
+            if(State.is(State.STATES.RUNNING)){
+                Engine.stop();
+            } else if(State.is(State.STATES.READY)){
+                Engine.start();
+            }
+        }
+
+    });
+
+    /* Also handle mouse clicks for desktop touch-like behaviour */
+    circle.addEventListener('click', () => {
+        if(State.is(State.STATES.RUNNING)){
+            Engine.stop();
+        } else if(State.is(State.STATES.READY)){
+            Engine.start();
+        }
+    });
+
+})();
+
+/* keep existing keyboard controls and behavior above
+
+   Notes:
+   - Tap / click the circular stage to start/stop.
+   - Swipe up/down on the circle during setup or while running to adjust speed.
+   - Two-finger pinch on the circle adjusts speed proportionally.
+   - Center overlay text is editable (supports any script / language).
+*/
+
 </script>
 </body>
 </html>
