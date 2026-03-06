@@ -1,253 +1,139 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Immersive Circular Engine</title>
-
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Immersive Circular Engine — Dual Layers</title>
 <style>
-*,
-*::before,
-*::after{
-    margin:0;
-    padding:0;
-    box-sizing:border-box;
-}
+/* Reset & base */
+*,:before,:after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;width:100%;background:#000;font-family:system-ui;overflow:hidden;color:#fff}
 
-html, body{
-    height:100%;
-    width:100%;
-    background:#000;
-    font-family:system-ui;
-    overflow:hidden;
-}
+/* Setup panel */
+#setup{position:fixed;inset:0;display:flex;justify-content:center;align-items:center;flex-direction:column;gap:12px;background:#020617;z-index:100;padding:20px}
+#uploadLabel,#overlayUploadLabel{padding:10px 18px;background:#334155;border-radius:36px;cursor:pointer;font-weight:600}
+#previewRow{display:flex;align-items:center;gap:12px}
+#previewBox{width:120px;height:120px;border:2px solid #334155;border-radius:12px;display:flex;justify-content:center;align-items:center;overflow:hidden;background:#0f172a}
+#previewBox img{width:100%;height:100%;object-fit:cover;display:block}
+.controls{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.row{display:flex;gap:8px;align-items:center}
+.small{font-size:0.85rem;opacity:0.85}
+input[type="range"]{width:200px}
+input[type="file"]{display:none}
+#playBtn{padding:10px 18px;background:#22d3ee;border-radius:36px;font-weight:700;border:none;cursor:pointer;display:none}
 
-/* --- original setup styles kept --- */
-#setup{
-    position:fixed;
-    inset:0;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    flex-direction:column;
-    gap:18px;
-    background:#020617;
-    color:white;
-    z-index:100;
-}
+/* Stage */
+#stage{position:fixed;inset:0;display:none;flex-direction:column;justify-content:center;align-items:center;background:#000}
+#circle{position:relative;width:80vmin;height:80vmin;border-radius:50%;overflow:hidden;touch-action:none;-webkit-tap-highlight-color:transparent;background:transparent}
 
-#uploadLabel{
-    padding:14px 36px;
-    background:#334155;
-    border-radius:40px;
-    cursor:pointer;
-    font-weight:600;
-}
-
-#previewBox{
-    width:120px;
-    height:120px;
-    border:2px solid #334155;
-    border-radius:12px;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    overflow:hidden;
-    background:#0f172a;
-}
-
-#previewBox img{
-    width:100%;
-    height:100%;
-    object-fit:cover;
-}
-
-#textInput{
-    padding:10px 14px;
-    border-radius:8px;
-    border:none;
-    width:220px;
-}
-
-#playBtn{
-    padding:14px 36px;
-    background:#22d3ee;
-    border-radius:40px;
-    font-weight:700;
-    border:none;
-    cursor:pointer;
-    display:none;
-}
-
-#colorWrapper{
-    display:flex;
-    align-items:center;
-    gap:10px;
-    font-weight:600;
-}
-
-input[type="file"]{
-    display:none;
-}
-
-#stage{
-    position:fixed;
-    inset:0;
-    display:none;
-    flex-direction:column;
-    justify-content:center;
-    align-items:center;
-    background:#000;
-}
-
-#circle{
-    position:relative;
-    width:80vmin;
-    height:80vmin;
-    border-radius:50%;
-    overflow:hidden;
-}
-
-#renderImage{
+/* Two stacked images with identical geometry so crop is identical */
+#baseImage,#overlayImage{
     position:absolute;
-    top:50%;
-    left:50%;
-    width:100%;
-    height:100%;
+    top:50%;left:50%;
+    width:100%;height:100%;
     object-fit:cover;
     transform-origin:center center;
     will-change:transform;
+    transform: translate(-50%,-50%) rotate(0deg);
 }
 
-#displayText{
-    margin-top:20px;
-    font-size:1.5rem;
-    font-weight:600;
-    text-align:center;
-    max-width:80%;
-    word-wrap:break-word;
-}
+/* overlay sits above base but below center overlay text */
+#overlayImage{pointer-events:none;opacity:0.6}
 
-/* ----------------- New / modified layout for setup to avoid blocking controls ----------------- */
-
-/* new container to put the preview and color picker side-by-side */
-#previewRow{
-    display:flex;
-    align-items:center;
-    gap:12px;
-}
-
-/* move color picker to a smaller pill next to preview */
-#colorWrapper {
-    padding:8px;
-    border-radius:10px;
-    background: rgba(255,255,255,0.03);
-}
-
-/* Inputs for center overlay text */
-#centerControls{
-    display:flex;
-    gap:8px;
-    align-items:center;
-}
-
-/* center overlay placed above image but NOT rotated */
+/* center overlay does not rotate */
 #centerOverlay{
-    position:absolute;
-    top:50%;
-    left:50%;
-    transform:translate(-50%,-50%);
-    pointer-events:none; /* allow touches to pass to image for gestures */
-    text-align:center;
-    white-space:pre-wrap;
-    word-break:break-word;
-    max-width:90%;
-    font-weight:700;
-    /* default styling; updated dynamically in JS */
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    pointer-events:none;text-align:center;white-space:pre-wrap;word-break:break-word;max-width:90%;font-weight:700
 }
 
-/* for touch hint on mobile */
-.touchHint{
-    font-size:0.85rem;
-    opacity:0.7;
+#displayText{margin-top:18px;font-size:1.2rem;font-weight:600;text-align:center;max-width:80%;word-wrap:break-word;color:#fff}
+
+/* responsiveness */
+@media(max-width:640px){
+    #setup{padding:12px}
+    input[type="range"]{width:140px}
 }
-
-/* responsive tweaks */
-@media (max-width:640px){
-    #setup{ padding:18px; gap:12px; }
-    #previewRow{ gap:8px; }
-    #textInput{ width:160px; }
-}
-
-/* keep the original look but ensure play button is tappable */
-#playBtn{ touch-action: manipulation; }
-
-/* make circle tap-responsive */
-#circle{ touch-action: none; -webkit-tap-highlight-color: transparent; }
-
-/* small visual hint when stage active so center overlay is readable (can be overwritten by bg color) */
-#stage.dim::after{
-    content:"";
-    position:absolute;
-    inset:0;
-    background:transparent;
-    pointer-events:none;
-}
-
 </style>
 </head>
 <body>
 
+<!-- Setup UI -->
 <div id="setup">
-
-    <label id="uploadLabel">
-        Select Image
-        <input type="file" id="fileInput" accept="image/*">
-    </label>
-
-    <!-- NEW: previewRow to put preview and color picker side-by-side -->
     <div id="previewRow">
-        <div id="previewBox">
-            <img id="previewImage" />
-        </div>
+        <div id="previewBox"><img id="previewImage" alt="preview"></div>
 
-        <div id="colorWrapper">
-            Background
-            <input type="color" id="bgColorPicker" value="#000000" aria-label="Background color picker">
+        <div class="controls">
+            <div class="row">
+                <label id="uploadLabel" class="small">Select Base Image
+                    <input id="fileInput" type="file" accept="image/*">
+                </label>
+
+                <label id="overlayUploadLabel" class="small">Select Overlay (PNG)
+                    <input id="overlayInput" type="file" accept="image/png">
+                </label>
+            </div>
+
+            <div class="row small">
+                <label for="bgColorPicker">Background</label>
+                <input id="bgColorPicker" type="color" value="#000000" aria-label="Background color picker">
+            </div>
         </div>
     </div>
 
-    <input type="text" id="textInput" placeholder="Optional text below image">
+    <div class="controls" style="width:100%;max-width:720px">
+        <div class="row">
+            <label class="small">Caption (below)</label>
+            <input id="textInput" type="text" placeholder="Optional text below image" style="padding:8px;border-radius:8px;border:none;width:320px">
+        </div>
 
-    <!-- NEW: center overlay controls (any language) -->
-    <div id="centerControls">
-        <input type="text" id="centerTextInput" placeholder="Center overlay (any language)" style="padding:8px;border-radius:8px;border:none;width:240px;">
-        <input type="color" id="centerTextColor" value="#ffffff" title="Center text color" style="width:40px;height:40px;padding:0;border-radius:6px;border:1px solid #334155;">
-        <input type="number" id="centerTextSize" value="28" min="10" max="200" step="1" title="Font size (px)" style="width:70px;padding:8px;border-radius:8px;border:none;">
+        <div class="row" style="align-items:center;">
+            <div style="min-width:120px" class="small">Base speed</div>
+            <input id="baseSpeed" type="range" min="0" max="360" value="60" step="1">
+            <div id="baseSpeedVal" class="small" style="min-width:40px;text-align:right">60°/s</div>
+        </div>
+
+        <div class="row" style="align-items:center;">
+            <div style="min-width:120px" class="small">Overlay speed</div>
+            <input id="overlaySpeed" type="range" min="0" max="360" value="40" step="1">
+            <div id="overlaySpeedVal" class="small" style="min-width:40px;text-align:right">40°/s</div>
+        </div>
+
+        <div class="row" style="align-items:center;">
+            <div style="min-width:120px" class="small">Overlay opacity</div>
+            <input id="overlayOpacity" type="range" min="0" max="1" step="0.01" value="0.6">
+            <div id="overlayOpacityVal" class="small" style="min-width:40px;text-align:right">0.60</div>
+        </div>
+
+        <div id="centerControls" class="row">
+            <input id="centerTextInput" type="text" placeholder="Center overlay (any language)" style="padding:8px;border-radius:8px;border:none;width:240px">
+            <input id="centerTextColor" type="color" value="#ffffff" title="Center text color" style="width:40px;height:40px;padding:0;border-radius:6px;border:1px solid #334155">
+            <input id="centerTextSize" type="number" value="28" min="10" max="200" step="1" title="Font size (px)" style="width:70px;padding:8px;border-radius:8px;border:none">
+        </div>
+
     </div>
 
     <button id="playBtn">Play</button>
 
-    <div class="touchHint">Mobile gestures: tap circle to start/stop, swipe up/down to change speed. Two-finger pinch changes speed faster.</div>
-
+    <div class="small touchHint">Mobile gestures: tap circle to start/stop, swipe up/down to change base speed. Two-finger pinch changes base speed proportionally. Use arrows to change base speed; shift+arrows change overlay speed.</div>
 </div>
 
+<!-- Stage -->
 <div id="stage">
     <div id="circle">
-        <img id="renderImage"/>
-        <!-- NEW: fixed center overlay that does NOT rotate with image -->
+        <img id="baseImage" alt="base layer">
+        <img id="overlayImage" alt="overlay layer">
         <div id="centerOverlay" aria-hidden="true"></div>
     </div>
-    <div id="displayText"></div>
+    <div id="displayText" role="status" aria-live="polite"></div>
 </div>
 
 <script>
-
 /* CONFIG */
-
 const Config = (function(){
     const settings = {
-        rotationSpeed: 60,
+        rotationSpeed: 60,           // base (deg/sec)
+        overlaySpeed: 40,            // overlay (deg/sec)
+        overlayOpacity: 0.6,
         backgroundColor: "#000000",
         displayText: "",
         centerText: "",
@@ -255,217 +141,261 @@ const Config = (function(){
         centerTextSize: 28
     };
     return {
-        get(key){ return settings[key]; },
-        set(key,value){ settings[key] = value; }
+        get(k){ return settings[k]; },
+        set(k,v){ settings[k] = v; }
     };
 })();
 
 /* STATE */
-
 const State = (function(){
-    const STATES = {
-        INIT: "INIT",
-        READY: "READY",
-        RUNNING: "RUNNING"
-    };
+    const STATES = { INIT:"INIT", READY:"READY", RUNNING:"RUNNING" };
     let current = STATES.INIT;
-    return {
-        set(state){ current = state; },
-        is(state){ return current === state; },
-        STATES
-    };
+    return { set(s){ current = s }, is(s){ return current === s }, STATES };
 })();
 
-/* CONTRAST FUNCTION */
-
+/* Contrast util */
 function getContrastColor(hex){
-
     const r = parseInt(hex.substr(1,2),16);
     const g = parseInt(hex.substr(3,2),16);
     const b = parseInt(hex.substr(5,2),16);
-
-    const luminance =
-        (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-
+    const luminance = (0.299*r + 0.587*g + 0.114*b)/255;
     return luminance > 0.6 ? "#000000" : "#ffffff";
 }
 
 /* ENGINE */
-
 const Engine = (function(){
+    const baseImg = document.getElementById('baseImage');
+    const overlayImg = document.getElementById('overlayImage');
+    const stage = document.getElementById('stage');
+    const setup = document.getElementById('setup');
+    const displayText = document.getElementById('displayText');
+    const centerOverlay = document.getElementById('centerOverlay');
 
-    const imageEl = document.getElementById("renderImage");
-    const stage = document.getElementById("stage");
-    const setup = document.getElementById("setup");
-    const displayText = document.getElementById("displayText");
-    const centerOverlay = document.getElementById("centerOverlay");
-
-    let angle = 0;
-    let animationId = null;
+    let baseAngle = 0;
+    let overlayAngle = 0;
     let lastTime = performance.now();
+    let raf = null;
 
-    function applyCenterOverlayStyles(){
-        centerOverlay.textContent = Config.get("centerText");
-        centerOverlay.style.color = Config.get("centerTextColor");
-        centerOverlay.style.fontSize = Config.get("centerTextSize") + "px";
-        // Use a fallback font-family that supports many languages; user can override via CSS if needed
-        centerOverlay.style.fontFamily = "system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', 'Noto Color Emoji', sans-serif";
+    function applyCenterStyles(){
+        centerOverlay.textContent = Config.get('centerText');
+        centerOverlay.style.color = Config.get('centerTextColor');
+        centerOverlay.style.fontSize = Config.get('centerTextSize') + 'px';
+        centerOverlay.style.fontFamily = "system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif";
         centerOverlay.style.textShadow = "0 1px 2px rgba(0,0,0,0.6)";
     }
 
     function start(){
-
-        // if nothing loaded, ignore
-        if(!imageEl.src) return;
+        // require base image to be loaded
+        if(!baseImg.src) return;
 
         State.set(State.STATES.RUNNING);
+        stage.style.background = Config.get('backgroundColor');
+        displayText.textContent = Config.get('displayText');
+        displayText.style.color = getContrastColor(Config.get('backgroundColor'));
 
-        const bg = Config.get("backgroundColor");
+        applyCenterStyles();
+        centerOverlay.style.display = Config.get('centerText') ? 'block' : 'none';
 
-        stage.style.background = bg;
-        displayText.textContent = Config.get("displayText");
-        displayText.style.color = getContrastColor(bg);
+        // ensure overlay opacity matches config
+        overlayImg.style.opacity = Config.get('overlayOpacity');
 
-        applyCenterOverlayStyles();
-
-        stage.style.display = "flex";
-        setup.style.display = "none";
-
-        // ensure center overlay visible above frame
-        centerOverlay.style.display = Config.get("centerText") ? "block" : "none";
+        setup.style.display = 'none';
+        stage.style.display = 'flex';
 
         lastTime = performance.now();
-        loop();
+        raf = requestAnimationFrame(loop);
     }
 
     function stop(){
+        cancelAnimationFrame(raf);
+        raf = null;
+        baseAngle = 0;
+        overlayAngle = 0;
 
-        cancelAnimationFrame(animationId);
-        angle = 0;
+        baseImg.style.transform = "translate(-50%,-50%) rotate(0deg)";
+        overlayImg.style.transform = "translate(-50%,-50%) rotate(0deg)";
 
-        imageEl.style.transform =
-            "translate(-50%, -50%) rotate(0deg)";
-
-        stage.style.display = "none";
-        setup.style.display = "flex";
+        stage.style.display = 'none';
+        setup.style.display = 'flex';
 
         State.set(State.STATES.READY);
     }
 
     function loop(now = performance.now()){
-
         if(!State.is(State.STATES.RUNNING)) return;
-
         const delta = now - lastTime;
         lastTime = now;
 
-        const speed = Config.get("rotationSpeed");
-        angle += (speed * delta) / 1000;
+        // degrees per second -> degrees to add this frame
+        const bs = Number(Config.get('rotationSpeed')) || 0;
+        const os = Number(Config.get('overlaySpeed')) || 0;
 
-        imageEl.style.transform =
-            `translate(-50%, -50%) rotate(${angle}deg)`;
+        baseAngle += (bs * delta) / 1000;
+        overlayAngle -= (os * delta) / 1000; // negative to rotate opposite direction
 
-        animationId = requestAnimationFrame(loop);
+        // set transforms (translate to center then rotate)
+        baseImg.style.transform = `translate(-50%,-50%) rotate(${baseAngle}deg)`;
+        overlayImg.style.transform = `translate(-50%,-50%) rotate(${overlayAngle}deg)`;
+
+        raf = requestAnimationFrame(loop);
     }
 
     return { start, stop };
-
 })();
 
-/* INPUT CONTROLS */
+/* UI Wiring */
+(function(){
+    const fileInput = document.getElementById('fileInput');
+    const overlayInput = document.getElementById('overlayInput');
+    const playBtn = document.getElementById('playBtn');
+    const previewImage = document.getElementById('previewImage');
+    const baseImage = document.getElementById('baseImage');
+    const overlayImage = document.getElementById('overlayImage');
+    const bgColorPicker = document.getElementById('bgColorPicker');
+    const textInput = document.getElementById('textInput');
 
-document.addEventListener("keydown", e => {
+    const baseSpeed = document.getElementById('baseSpeed');
+    const baseSpeedVal = document.getElementById('baseSpeedVal');
+    const overlaySpeed = document.getElementById('overlaySpeed');
+    const overlaySpeedVal = document.getElementById('overlaySpeedVal');
+    const overlayOpacity = document.getElementById('overlayOpacity');
+    const overlayOpacityVal = document.getElementById('overlayOpacityVal');
 
+    const centerTextInput = document.getElementById('centerTextInput');
+    const centerTextColor = document.getElementById('centerTextColor');
+    const centerTextSize = document.getElementById('centerTextSize');
+
+    /* Background color */
+    bgColorPicker.addEventListener('input', e=>{
+        Config.set('backgroundColor', e.target.value);
+        // if stage visible change immediately
+        const stage = document.getElementById('stage');
+        if(stage.style.display === 'flex') stage.style.background = e.target.value;
+    });
+
+    /* caption below */
+    textInput.addEventListener('input', e=>{
+        Config.set('displayText', e.target.value);
+        const displayText = document.getElementById('displayText');
+        displayText.textContent = e.target.value;
+    });
+
+    /* center overlay */
+    centerTextInput.addEventListener('input', e=>{
+        Config.set('centerText', e.target.value);
+        document.getElementById('centerOverlay').textContent = e.target.value;
+    });
+    centerTextColor.addEventListener('input', e=>{
+        Config.set('centerTextColor', e.target.value);
+        document.getElementById('centerOverlay').style.color = e.target.value;
+    });
+    centerTextSize.addEventListener('input', e=>{
+        const v = parseInt(e.target.value,10) || 28;
+        Config.set('centerTextSize', v);
+        document.getElementById('centerOverlay').style.fontSize = v + 'px';
+    });
+
+    /* base image upload */
+    fileInput.addEventListener('change', e=>{
+        const f = e.target.files && e.target.files[0];
+        if(!f) return;
+        const reader = new FileReader();
+        reader.onload = ev=>{
+            baseImage.src = ev.target.result;
+            previewImage.src = ev.target.result;
+            // mark ready
+            State.set(State.STATES.READY);
+            playBtn.style.display = 'inline-block';
+        };
+        reader.readAsDataURL(f);
+    });
+
+    /* overlay PNG upload (optional) */
+    overlayInput.addEventListener('change', e=>{
+        const f = e.target.files && e.target.files[0];
+        if(!f) return;
+        const reader = new FileReader();
+        reader.onload = ev=>{
+            overlayImage.src = ev.target.result;
+            // keep overlay visible (opacity controlled separately)
+            overlayImage.style.opacity = Config.get('overlayOpacity');
+            // ensure play button visible if base already loaded
+            if(baseImage.src) playBtn.style.display = 'inline-block';
+        };
+        reader.readAsDataURL(f);
+    });
+
+    /* play button */
+    playBtn.addEventListener('click', ()=>{
+        if(State.is(State.STATES.READY)) Engine.start();
+    });
+
+    /* speed and opacity controls */
+    function updateBaseSpeedDisplay(){
+        baseSpeedVal.textContent = baseSpeed.value + '°/s';
+        Config.set('rotationSpeed', Number(baseSpeed.value));
+    }
+    baseSpeed.addEventListener('input', updateBaseSpeedDisplay);
+    updateBaseSpeedDisplay();
+
+    function updateOverlaySpeedDisplay(){
+        overlaySpeedVal.textContent = overlaySpeed.value + '°/s';
+        Config.set('overlaySpeed', Number(overlaySpeed.value));
+    }
+    overlaySpeed.addEventListener('input', updateOverlaySpeedDisplay);
+    updateOverlaySpeedDisplay();
+
+    function updateOverlayOpacityDisplay(){
+        overlayOpacityVal.textContent = Number(overlayOpacity.value).toFixed(2);
+        Config.set('overlayOpacity', Number(overlayOpacity.value));
+        overlayImage.style.opacity = Config.get('overlayOpacity');
+    }
+    overlayOpacity.addEventListener('input', updateOverlayOpacityDisplay);
+    updateOverlayOpacityDisplay();
+
+    /* small accessibility: pressing Enter on preview toggles play/stop */
+    previewImage.addEventListener('click', ()=>{
+        if(State.is(State.STATES.RUNNING)) Engine.stop();
+        else if(State.is(State.STATES.READY)) Engine.start();
+    });
+
+    /* ensure preview image is non-interactive for selection */
+    previewImage.style.userSelect = 'none';
+    previewImage.style.touchAction = 'manipulation';
+})();
+
+/* Keyboard & global input handling */
+/* arrow up/down change base rotation speed; shift+arrow changes overlay speed */
+document.addEventListener('keydown', e=>{
     const key = e.key.toLowerCase();
 
-    if(key === "escape" || key === "q"){
-        Engine.stop();
-    }
+    // stop/start
+    if(key === 'escape' || key === 'q') { Engine.stop(); return; }
 
-    if(key === "arrowup"){
-        const current = Config.get("rotationSpeed");
-        Config.set("rotationSpeed", current + 20);
+    // arrow controls
+    if(key === 'arrowup' || key === 'arrowdown'){
+        const baseInc = (key === 'arrowup') ? 20 : -20;
+        if(e.shiftKey){
+            // adjust overlay speed
+            const cur = Number(Config.get('overlaySpeed')) || 0;
+            Config.set('overlaySpeed', Math.max(0, cur + baseInc));
+            const overlaySpeedEl = document.getElementById('overlaySpeed');
+            overlaySpeedEl.value = Config.get('overlaySpeed');
+            document.getElementById('overlaySpeedVal').textContent = overlaySpeedEl.value + '°/s';
+        } else {
+            // adjust base speed
+            const cur = Number(Config.get('rotationSpeed')) || 0;
+            Config.set('rotationSpeed', Math.max(0, cur + baseInc));
+            const baseSpeedEl = document.getElementById('baseSpeed');
+            baseSpeedEl.value = Config.get('rotationSpeed');
+            document.getElementById('baseSpeedVal').textContent = baseSpeedEl.value + '°/s';
+        }
     }
-
-    if(key === "arrowdown"){
-        const current = Config.get("rotationSpeed");
-        Config.set("rotationSpeed", Math.max(0, current - 20));
-    }
-
 });
 
-/* UI */
-
+/* Touch & gesture handling on #circle (base speed adjustments) */
 (function(){
-
-    const fileInput = document.getElementById("fileInput");
-    const playBtn = document.getElementById("playBtn");
-    const renderImage = document.getElementById("renderImage");
-    const previewImage = document.getElementById("previewImage");
-    const bgColorPicker = document.getElementById("bgColorPicker");
-    const textInput = document.getElementById("textInput");
-
-    // center overlay controls
-    const centerTextInput = document.getElementById("centerTextInput");
-    const centerTextColor = document.getElementById("centerTextColor");
-    const centerTextSize = document.getElementById("centerTextSize");
-    const centerOverlay = document.getElementById("centerOverlay");
-
-    bgColorPicker.addEventListener("input", e=>{
-        Config.set("backgroundColor", e.target.value);
-    });
-
-    textInput.addEventListener("input", e=>{
-        Config.set("displayText", e.target.value);
-    });
-
-    centerTextInput.addEventListener("input", e=>{
-        Config.set("centerText", e.target.value);
-        centerOverlay.textContent = e.target.value;
-    });
-
-    centerTextColor.addEventListener("input", e=>{
-        Config.set("centerTextColor", e.target.value);
-        centerOverlay.style.color = e.target.value;
-    });
-
-    centerTextSize.addEventListener("input", e=>{
-        const v = parseInt(e.target.value,10) || 28;
-        Config.set("centerTextSize", v);
-        centerOverlay.style.fontSize = v + "px";
-    });
-
-    fileInput.addEventListener("change", e=>{
-        const file = e.target.files[0];
-        if(!file) return;
-
-        const reader = new FileReader();
-        reader.onload = event=>{
-            renderImage.src = event.target.result;
-            previewImage.src = event.target.result;
-
-            State.set(State.STATES.READY);
-            playBtn.style.display = "inline-block";
-        };
-        reader.readAsDataURL(file);
-    });
-
-    playBtn.addEventListener("click", ()=>{
-        if(State.is(State.STATES.READY)){
-            Engine.start();
-        }
-    });
-
-    /* Ensure preview image clickable for mobile color picking: do not overlay controls on top of preview */
-    previewImage.style.userSelect = "none";
-    previewImage.style.touchAction = "manipulation";
-
-})();
-
-/* --- TOUCH & GESTURE HANDLING for mobile on #circle --- */
-/* Replaced broken cumulative-change logic with a stable, start-anchored implementation. */
-(function(){
-    const circle = document.getElementById("circle");
+    const circle = document.getElementById('circle');
 
     let startY = 0;
     let startSpeed = 0;
@@ -474,97 +404,64 @@ document.addEventListener("keydown", e => {
     let pinchStartDistance = 0;
     let pinchStartSpeed = 0;
 
-    function getDistance(t1, t2){
-        const dx = t2.clientX - t1.clientX;
-        const dy = t2.clientY - t1.clientY;
-        return Math.hypot(dx,dy);
-    }
+    function getDistance(t1,t2){ return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY); }
 
-    circle.addEventListener("touchstart", e => {
-
+    circle.addEventListener('touchstart', e=>{
         if(e.touches.length === 1){
             const t = e.touches[0];
             startY = t.clientY;
-            startSpeed = Config.get("rotationSpeed");
+            startSpeed = Config.get('rotationSpeed');
             startTime = Date.now();
             isPinching = false;
         }
-
         if(e.touches.length === 2){
             isPinching = true;
             pinchStartDistance = getDistance(e.touches[0], e.touches[1]);
-            pinchStartSpeed = Config.get("rotationSpeed");
+            pinchStartSpeed = Config.get('rotationSpeed');
         }
-
     }, {passive:true});
 
-    circle.addEventListener("touchmove", e => {
-
+    circle.addEventListener('touchmove', e=>{
         if(isPinching && e.touches.length === 2){
-
             const newDistance = getDistance(e.touches[0], e.touches[1]);
             if(pinchStartDistance > 0){
                 const scale = newDistance / pinchStartDistance;
                 const newSpeed = Math.max(0, Math.round(pinchStartSpeed * scale));
-                Config.set("rotationSpeed", newSpeed);
+                Config.set('rotationSpeed', newSpeed);
+                const baseSpeedEl = document.getElementById('baseSpeed');
+                baseSpeedEl.value = newSpeed;
+                document.getElementById('baseSpeedVal').textContent = baseSpeedEl.value + '°/s';
             }
-
             e.preventDefault();
             return;
         }
-
         if(e.touches.length === 1){
-
             const t = e.touches[0];
             const deltaY = startY - t.clientY;
-
-            const sensitivity = 0.5; // increase to make swipes change speed more aggressively
+            const sensitivity = 0.5;
             const newSpeed = Math.max(0, Math.round(startSpeed + (deltaY * sensitivity)));
-
-            Config.set("rotationSpeed", newSpeed);
+            Config.set('rotationSpeed', newSpeed);
+            const baseSpeedEl = document.getElementById('baseSpeed');
+            baseSpeedEl.value = newSpeed;
+            document.getElementById('baseSpeedVal').textContent = baseSpeedEl.value + '°/s';
         }
-
     }, {passive:false});
 
-    circle.addEventListener("touchend", e => {
-
-        if(isPinching){
-            isPinching = false;
-            return;
-        }
-
+    circle.addEventListener('touchend', e=>{
+        if(isPinching){ isPinching = false; return; }
         const duration = Date.now() - startTime;
-
-        // treat short taps as toggle
         if(duration < 250){
-            if(State.is(State.STATES.RUNNING)){
-                Engine.stop();
-            } else if(State.is(State.STATES.READY)){
-                Engine.start();
-            }
-        }
-
-    });
-
-    /* Also handle mouse clicks for desktop touch-like behaviour */
-    circle.addEventListener('click', () => {
-        if(State.is(State.STATES.RUNNING)){
-            Engine.stop();
-        } else if(State.is(State.STATES.READY)){
-            Engine.start();
+            if(State.is(State.STATES.RUNNING)) Engine.stop();
+            else if(State.is(State.STATES.READY)) Engine.start();
         }
     });
 
+    // mouse click toggles as well
+    circle.addEventListener('click', ()=>{
+        if(State.is(State.STATES.RUNNING)) Engine.stop();
+        else if(State.is(State.STATES.READY)) Engine.start();
+    });
 })();
-
-/* keep existing keyboard controls and behavior above
-
-   Notes:
-   - Tap / click the circular stage to start/stop.
-   - Swipe up/down on the circle during setup or while running to adjust speed.
-   - Two-finger pinch on the circle adjusts speed proportionally.
-   - Center overlay text is editable (supports any script / language).
-*/
 
 </script>
 </body>
